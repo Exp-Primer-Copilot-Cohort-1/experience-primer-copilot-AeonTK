@@ -1,66 +1,81 @@
 // Create web server
-// This file contains all the routes for the comments
+// ====================
 
-// Import express module
+// Include the modules
 const express = require('express');
-const router = express.Router();
-const { check, validationResult } = require('express-validator');
-const Comment = require('../models/comment');
-const Post = require('../models/post');
-const User = require('../models/user');
-const { ensureAuthenticated } = require('../config/auth');
-const { post } = require('./posts');
+const bodyParser = require('body-parser');
+const mongoose = require('mongoose');
+const authenticate = require('../authenticate');
 
-// Route for saving a comment
-router.post('/save', ensureAuthenticated, [
-    check('comment').not().isEmpty().withMessage('Comment cannot be empty'),
-    check('post').not().isEmpty().withMessage('Post cannot be empty'),
-], async (req, res) => {
-    // Check if there are any errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        // If there are errors, return the errors
-        return res.status(400).json({ errors: errors.array() });
+// Import comments schema
+const Comments = require('../models/comments');
+
+// Create router
+const commentRouter = express.Router();
+
+commentRouter.use(bodyParser.json());
+
+// Route for '/'
+commentRouter.route('/')
+// GET method
+.get((req, res, next) => {
+    // Find all comments
+    Comments.find({})
+    // Populate author field
+    .populate('author')
+    .then((comments) => {
+        // Send response
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.json(comments);
+    }, (err) => next(err))
+    .catch((err) => next(err));
+})
+// POST method
+.post(authenticate.verifyUser, (req, res, next) => {
+    // Check if user is admin
+    if (req.user.admin) {
+        // Send error message
+        res.statusCode = 403;
+        res.end('You are not authorized to perform this operation!');
+    } else {
+        // Create new comment
+        Comments.create(req.body)
+        .then((comment) => {
+            // Send response
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.json(comment);
+        }, (err) => next(err))
+        .catch((err) => next(err));
     }
-    // Save comment to database
-    try {
-        // Create a new comment object
-        const comment = new Comment({
-            comment: req.body.comment,
-            post: req.body.post,
-            user: req.user.id,
-        });
-        // Save comment to database
-        await comment.save();
-        // Find the post that the comment belongs to
-        const post = await Post.findById(req.body.post);
-        // Add comment to post
-        post.comments.push(comment);
-        // Save post to database
-        await post.save();
-        // Find the user that wrote the comment
-        const user = await User.findById(req.user.id);
-        // Add comment to user
-        user.comments.push(comment);
-        // Save user to database
-        await user.save();
-        // Return success message
-        res.status(200).json({ msg: 'Comment saved' });
-    } catch (err) {
-        // Log error to console
-        console.error(err.message);
-        // Return server error
-        res.status(500).json({ msg: 'Server error' });
+})
+// PUT method
+.put(authenticate.verifyUser, (req, res, next) => {
+    // Send error message
+    res.statusCode = 403;
+    res.end('PUT operation not supported on /comments');
+})
+// DELETE method
+.delete(authenticate.verifyUser, (req, res, next) => {
+    // Check if user is admin
+    if (req.user.admin) {
+        // Delete all comments
+        Comments.remove({})
+        .then((resp) => {
+            // Send response
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.json(resp);
+        }, (err) => next(err))
+        .catch((err) => next(err));
+    } else {
+        // Send error message
+        res.statusCode = 403;
+        res.end('You are not authorized to perform this operation!');
     }
 });
 
-// Route for deleting a comment
-router.delete('/delete', ensureAuthenticated, async (req, res) => {
-    // Delete comment from database
-    try {
-        // Find comment in database
-        const comment = await Comment.findById(req.body.comment);
-        // Check if comment exists
-        if (!comment) {
-            // If comment does not exist, return error
-            return res.status(404).json({ msg:
+// Route for '/:commentId'
+commentRouter.route('/:commentId')
+// GET
