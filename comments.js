@@ -76,6 +76,8 @@ commentRouter.route('/')
     }
 });
 
+module.exports = commentRouter;
+
 // Route for '/:commentId'
 commentRouter.route('/:commentId')
 // GET
